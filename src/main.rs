@@ -7,7 +7,7 @@ use ansi_term::{
 use inquire::{
     InquireError, Select
 };
-use std::sync::mpsc::channel;
+use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -26,9 +26,11 @@ fn get_test_type() -> Result<UserOption, InquireError> {
 }
 
 // TODO: a way to spawn this in a separate thread to TUI
-fn tokio_runtime() {
+fn spawn_tokio_thread() -> Receiver<String> {
+  let (reactor_tx, main_rx) = mpsc::channel();
 
-  thread::spawn(|| {
+  // Use `move` to pass ownership to spawned thread
+  thread::spawn(move || {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
       let mut i = 0;
@@ -36,10 +38,13 @@ fn tokio_runtime() {
       loop {
         sleep(Duration::from_millis(sleep_millis)).await;
         i += sleep_millis;
-        println!("Slept {} millis", i);
+        let val = format!("Slept {} millis", i);
+        reactor_tx.send(val).unwrap();
       }
     })
   });
+
+  main_rx
 }
 
 fn main() {
@@ -61,6 +66,6 @@ fn main() {
     Style::new().bold().paint("https://www.rust-lang.org")
   );
 
-  tokio_runtime();
-  std::thread::sleep(Duration::from_millis(10000));
+  let rx = spawn_tokio_thread();
+  println!("{}", rx.recv().unwrap());
 }
