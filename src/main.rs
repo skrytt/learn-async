@@ -1,51 +1,13 @@
+mod reactor;
 mod user_option;
 
 use ansi_term::{
   Colour::{Green, Red, RGB},
   Style,
 };
-use inquire::{
-    InquireError, Select
-};
-use std::sync::mpsc::{self, Receiver};
-use std::thread;
-use std::time::Duration;
-use tokio::time::sleep;
-use user_option::UserOption;
 
-fn get_test_type() -> Result<UserOption, InquireError> {
-    let options = vec![
-        UserOption::new("HTTP".to_string()),
-        UserOption::new("TCP".to_string()),
-        UserOption::new("DNS".to_string()),
-        UserOption::new("CloudFormation".to_string()),
-    ];
-
-    let result = Select::new("Select Test Mode:", options).prompt()?;
-    Ok(result)
-}
-
-// TODO: a way to spawn this in a separate thread to TUI
-fn spawn_tokio_thread() -> Receiver<String> {
-  let (reactor_tx, main_rx) = mpsc::channel();
-
-  // Use `move` to pass ownership to spawned thread
-  thread::spawn(move || {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-      let mut i = 0;
-      let sleep_millis = 1000;
-      loop {
-        sleep(Duration::from_millis(sleep_millis)).await;
-        i += sleep_millis;
-        let val = format!("Slept {} millis", i);
-        reactor_tx.send(val).unwrap();
-      }
-    })
-  });
-
-  main_rx
-}
+use crate::user_option::get_test_type;
+use crate::reactor::spawn_tokio_thread;
 
 fn main() {
   match get_test_type() {
@@ -67,5 +29,8 @@ fn main() {
   );
 
   let rx = spawn_tokio_thread();
-  println!("{}", rx.recv().unwrap());
+  loop {
+    let received: String = rx.recv().unwrap();
+    println!("{}", received);
+  }
 }
