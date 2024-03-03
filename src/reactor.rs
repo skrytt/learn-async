@@ -11,7 +11,7 @@ pub fn spawn_tokio_thread() -> Receiver<String> {
     thread::spawn(move || {
       let rt = tokio::runtime::Runtime::new().unwrap();
       rt.block_on(async {
-        recursive(reactor_tx, 0).await;
+        recursive_http_get_and_wait(reactor_tx).await;
         loop {
           sleep(Duration::from_millis(1000)).await;
         }
@@ -21,15 +21,23 @@ pub fn spawn_tokio_thread() -> Receiver<String> {
     main_rx
   }
 
+  const TIMEOUT_MILLIS: u64 = 2000;
   const SLEEP_MILLIS: u64 = 1000;
 
   // Recursion requires this pattern to workaround compiler limitations
-  fn recursive(reactor_tx: Sender<String>, mut total_slept_millis: u64) -> BoxFuture<'static, ()> {
+  fn recursive_http_get_and_wait(reactor_tx: Sender<String>) -> BoxFuture<'static, ()> {
     async move {
-        sleep(Duration::from_millis(SLEEP_MILLIS)).await;
-        total_slept_millis += SLEEP_MILLIS;
-        let val: String = format!("Slept {} millis", total_slept_millis);
-        reactor_tx.send(val).unwrap();
-        recursive(reactor_tx, total_slept_millis).await;
+      let client = reqwest::Client::new();
+      let request = client.get("http://localhost:4321/")
+        .timeout(Duration::from_millis(TIMEOUT_MILLIS))
+        .build()
+        .unwrap();
+
+      let result = client.execute(request).await;
+
+      reactor_tx.send(format!("{:?}", result)).unwrap();
+
+      sleep(Duration::from_millis(SLEEP_MILLIS)).await;
+      recursive_http_get_and_wait(reactor_tx).await;
     }.boxed()
   }
