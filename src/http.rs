@@ -2,19 +2,22 @@ use ansi_term::{
   Colour::{Green, Red, RGB},
   Style,
 };
+use chrono::{DateTime, Local};
 use reqwest::StatusCode;
 use std::fmt::Display;
 
 const DARKGREY: ansi_term::Colour = RGB(60, 60, 60);
 
 pub struct HttpTestSummary {
+  time: DateTime<Local>,
   url: String,
   result: HttpResult,
 }
 
 impl HttpTestSummary {
-  pub fn new(url: String, result: HttpResult) -> Self {
+  pub fn new(time: DateTime<Local>, url: String, result: HttpResult) -> Self {
     Self {
+      time,
       url,
       result,
     }
@@ -47,7 +50,7 @@ pub fn print_http_result(summary: HttpTestSummary) {
   };
 
   println!("{}{} {}", 
-    Style::new().on(DARKGREY).paint(" HH:MM:SS "),
+    Style::new().on(DARKGREY).paint(format!(" {} ", summary.time.format("%H:%M:%S"))),
     Style::new().bold().on(result_colour).paint(format!(" {} ", summary.result)),
     Style::new().bold().paint(summary.url)
   )
