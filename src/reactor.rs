@@ -4,7 +4,9 @@ use std::thread;
 use std::time::Duration;
 use tokio::time::sleep;
 
-pub fn spawn_tokio_thread() -> Receiver<String> {
+use crate::http::{HttpTestSummary, HttpResult};
+
+pub fn spawn_tokio_thread() -> Receiver<HttpTestSummary> {
     let (reactor_tx, main_rx) = mpsc::channel();
   
     // Use `move` to pass ownership to spawned thread
@@ -25,17 +27,39 @@ pub fn spawn_tokio_thread() -> Receiver<String> {
   const SLEEP_MILLIS: u64 = 1000;
 
   // Recursion requires this pattern to workaround compiler limitations
-  fn recursive_http_get_and_wait(reactor_tx: Sender<String>) -> BoxFuture<'static, ()> {
+  fn recursive_http_get_and_wait(reactor_tx: Sender<HttpTestSummary>) -> BoxFuture<'static, ()> {
     async move {
+      let url = String::from("http://localhost:4321/");
       let client = reqwest::Client::new();
-      let request = client.get("http://localhost:4321/")
+      let request = client.get(url.clone())
         .timeout(Duration::from_millis(TIMEOUT_MILLIS))
         .build()
         .unwrap();
 
       let result = client.execute(request).await;
 
-      reactor_tx.send(format!("{:?}", result)).unwrap();
+      let result: HttpResult = match result {
+        Ok(resp) => {
+          HttpResult::HttpResponse{status: resp.status()}
+        },
+        Err(e) => {
+          if e.is_connect() {
+            HttpResult::ConnectFail
+          }
+          else if e.is_timeout() {
+            HttpResult::Timeout
+          }
+          else if let Some(status) = e.status() {
+            HttpResult::HttpResponse{status}
+          }
+          else {
+            panic!("Don't know how to handle reqwest::Error: {}", e);
+          }
+        }
+      };
+
+      let http_test_summary = HttpTestSummary::new(url, result);
+      reactor_tx.send(http_test_summary).unwrap();
 
       sleep(Duration::from_millis(SLEEP_MILLIS)).await;
       recursive_http_get_and_wait(reactor_tx).await;

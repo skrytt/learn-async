@@ -21,9 +21,6 @@ impl Display for UserOption {
 pub fn get_test_type() -> Result<UserOption, InquireError> {
     let options = vec![
         UserOption::new("HTTP".to_string()),
-        UserOption::new("TCP".to_string()),
-        UserOption::new("DNS".to_string()),
-        UserOption::new("CloudFormation".to_string()),
     ];
 
     let result = Select::new("Select Test Mode:", options).prompt()?;
