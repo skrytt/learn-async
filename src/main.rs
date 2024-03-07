@@ -7,15 +7,17 @@ use std::time::Duration;
 
 use color_eyre::eyre::Result;
 use crossterm::event::KeyCode::Char;
+use http::HttpTestSummary;
 use ratatui::{prelude::*, widgets::*};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tui::Event;
 
 // App state
-struct App {
+struct App<'a> {
     counter: i64,
     should_quit: bool,
     action_tx: UnboundedSender<Action>,
+    test_summary_line: Line<'a>,
 }
 
 // App actions
@@ -32,24 +34,16 @@ pub enum Action {
 }
 
 // App ui render function
-fn ui(f: &mut Frame, app: &mut App) {
-    let area = f.size();
-    f.render_widget(
-        Paragraph::new(format!(
-            "Press j or k to increment or decrement.\n\nCounter: {}",
-            app.counter,
-        ))
-        .block(
-            Block::default()
-                .title("ratatui async counter app")
-                .title_alignment(Alignment::Center)
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        )
-        .style(Style::default().fg(Color::Cyan))
-        .alignment(Alignment::Center),
-        area,
-    );
+fn ui(frame: &mut Frame, app: &mut App) {
+  let num_rows: u16 = 1;
+  let area = Rect::new(0, frame.size().height-num_rows, frame.size().width, num_rows);
+
+  frame.render_widget(
+    app.test_summary_line.clone()
+    .style(Style::default().fg(Color::Cyan))
+    .alignment(Alignment::Left),
+    area,
+  );
 }
 
 fn get_action(_app: &App, event: Event) -> Action {
@@ -71,7 +65,7 @@ fn get_action(_app: &App, event: Event) -> Action {
     }
 }
 
-fn update(app: &mut App, action: Action) {
+fn update_from_tui(app: &mut App, action: Action) {
     match action {
         Action::Increment => {
             app.counter += 1;
@@ -98,45 +92,54 @@ fn update(app: &mut App, action: Action) {
     };
 }
 
-async fn run() -> Result<()> {
-    let (action_tx, mut action_rx) = mpsc::unbounded_channel(); // new
+fn update_from_reactor(app: &mut App, test_summary: HttpTestSummary) {
+    app.test_summary_line = http::get_test_summary_line(test_summary)
+}
 
-    // ratatui terminal
-    let mut tui = tui::Tui::new()?.tick_rate(1.0).frame_rate(30.0);
+async fn run() -> Result<()> {
+    let url = user_input::get_url();
+    let main_rx_from_reactor = reactor::spawn_tokio_thread(url);
+
+    let (tui_tx, mut main_rx_from_tui) = mpsc::unbounded_channel(); // new
+
+    let mut tui = tui::Tui::new()?.tick_rate(1.0).frame_rate(10.0);
     tui.enter()?;
 
-    // application state
     let mut app = App {
         counter: 0,
         should_quit: false,
-        action_tx: action_tx.clone(),
+        action_tx: tui_tx.clone(),
+        test_summary_line: Line::from("Initial Test Summary String"),
     };
 
     loop {
         let e = tui.next().await?;
         match e {
-            tui::Event::Quit => action_tx.send(Action::Quit)?,
-            tui::Event::Tick => action_tx.send(Action::Tick)?,
-            tui::Event::Render => action_tx.send(Action::Render)?,
+            tui::Event::Quit => tui_tx.send(Action::Quit)?,
+            tui::Event::Tick => tui_tx.send(Action::Tick)?,
+            tui::Event::Render => tui_tx.send(Action::Render)?,
             tui::Event::Key(_) => {
                 let action = get_action(&app, e);
-                action_tx.send(action.clone())?;
+                tui_tx.send(action.clone())?;
             }
             _ => {}
         };
 
-        while let Ok(action) = action_rx.try_recv() {
-            // application update
-            update(&mut app, action.clone());
-            // render only when we receive Action::Render
+        while let Ok(action) = main_rx_from_tui.try_recv() {
+            update_from_tui(&mut app, action.clone());
+
             if let Action::Render = action {
+                // First get the latest test summary from the network reactor
+                while let Ok(test_summary) = main_rx_from_reactor.try_recv() {
+                    update_from_reactor(&mut app, test_summary);
+                }
+
                 tui.draw(|f| {
                     ui(f, &mut app);
                 })?;
             }
         }
 
-        // application exit
         if app.should_quit {
             break;
         }
@@ -154,20 +157,3 @@ async fn main() -> Result<()> {
 
     Ok(())
 }
-
-// ================
-// === OLD MAIN ===
-// ================
-//
-// use crate::http::{HttpTestSummary, print_http_result};
-// use crate::user_input::get_url;
-// use crate::reactor::spawn_tokio_thread;
-//
-// fn main() {
-//   let url = get_url();
-//   let rx = spawn_tokio_thread(url);
-//   loop {
-//     let http_test_summary: HttpTestSummary = rx.recv().unwrap();
-//     print_http_result(http_test_summary);
-//   }
-// }

@@ -1,12 +1,7 @@
-use ansi_term::{
-  Colour::{Green, Red, RGB},
-  Style,
-};
 use chrono::{DateTime, Local};
+use ratatui::{style::{Color, Modifier, Style}, text::Span};
 use reqwest::StatusCode;
 use std::fmt::Display;
-
-const DARKGREY: ansi_term::Colour = RGB(60, 60, 60);
 
 pub struct HttpTestSummary {
   time: DateTime<Local>,
@@ -40,21 +35,22 @@ impl Display for HttpResult {
 }
 }
 
-pub fn print_http_result(summary: HttpTestSummary) {
-  let result_colour: ansi_term::Colour = match summary.result {
-    HttpResult::ConnectFail | HttpResult::Timeout => Red,
+pub fn get_test_summary_line<'a>(summary: HttpTestSummary) -> ratatui::text::Line<'a> {
+  let result_colour: Color = match summary.result {
+    HttpResult::ConnectFail | HttpResult::Timeout => Color::Red,
     HttpResult::HttpResponse{status} => match status.as_u16() {
-      200 => Green,
-      _ => Red,
+      200 => Color::Green,
+      _ => Color::Red,
     }
   };
 
-  println!("{}{} {}", 
-    Style::new().on(DARKGREY).paint(format!(" {} ", summary.time.format("%H:%M:%S"))),
-    Style::new().bold().on(result_colour).paint(format!(" {} ", summary.result)),
-    Style::new().bold().paint(summary.url)
-  )
+  //A ratatui::text::line has Spans, these are individually stylable
+
+  let spans = vec![
+    Span::styled(format!(" {} ", summary.time.format("%H:%M:%S")), Style::new().fg(Color::White).bg(Color::DarkGray)),
+    Span::styled(format!(" {} ", summary.result), Style::new().add_modifier(Modifier::BOLD).fg(Color::White).bg(result_colour)),
+    Span::styled(format!(" {}", summary.url), Style::new().add_modifier(Modifier::BOLD)),
+  ];
+
+  return ratatui::text::Line::from(spans);
 }
-
-
-
