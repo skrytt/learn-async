@@ -97,6 +97,9 @@ name = "bitflags"
 version = "2.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed570934406eb16438a4e976b1b4500774099c13b8cb96eec99f620f05090ddf"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "bumpalo"
@@ -194,6 +197,7 @@ dependencies = [
  "cfg-if",
  "itoa",
  "ryu",
+ "serde",
  "static_assertions",
 ]
 
@@ -241,6 +245,7 @@ dependencies = [
  "libc",
  "mio",
  "parking_lot",
+ "serde",
  "signal-hook",
  "signal-hook-mio",
  "winapi",
@@ -681,8 +686,11 @@ dependencies = [
  "crossterm 0.27.0",
  "futures",
  "inquire",
+ "log",
  "ratatui",
  "reqwest",
+ "serde",
+ "signal-hook",
  "tokio",
  "tokio-util",
 ]
@@ -953,6 +961,7 @@ dependencies = [
  "itertools",
  "lru",
  "paste",
+ "serde",
  "stability",
  "strum",
  "unicode-segmentation",
